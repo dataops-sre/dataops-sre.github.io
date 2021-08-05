@@ -17,7 +17,7 @@ title: Mug
 email:
 description: >- # this means to ignore newlines until "baseurl:"
   j'aime le soleil et la mer.
-github_username: mrmuggymuggy
+github_username: dataops-sre
 minimal_mistakes_skin: default
 search: true
 layout: single
@@ -70,10 +70,10 @@ author:
   links:
     - label: "Website"
       icon: "fas fa-fw fa-link"
-      url: "https://mrmuggymuggy.github.io/"
+      url: "https://dataops-sre.github.io/"
     - label: "GitHub"
       icon: "fab fa-fw fa-github"
-      url: "https://github.com/mrmuggymuggy"
+      url: "https://github.com/dataops-sre"
     - label: "Linkedin"
       icon: "fab fa-fw fa-linkedin"
       url: "https://www.linkedin.com/in/liu-zhaolong-8564313b/"
@@ -82,7 +82,7 @@ footer:
   links:
     - label: "GitHub"
       icon: "fab fa-fw fa-github"
-      url: "https://github.com/mrmuggymuggy"
+      url: "https://github.com/dataops-sre"
     - label: "Linkedin"
       icon: "fab fa-fw fa-linkedin"
       url: "https://www.linkedin.com/in/liu-zhaolong-8564313b/"
