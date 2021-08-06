@@ -2,4 +2,4 @@
 permalink: /about/
 title: "About"
 ---
-Mais.. allô quoi
+I like to play Go, I use to live in southern France, I am very fond of free diving and read books.  
