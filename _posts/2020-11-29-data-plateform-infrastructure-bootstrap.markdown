@@ -1,3 +1,14 @@
+---
+title:  "Data plateform infrastructure bootstrap"
+date:   2020-11-29 16:36:37 +0100
+categories: Kubernetes AWS Terraform Devops
+tags:
+  - Devops
+  - AWS
+  - Terraform
+  - Kubernetes
+---
+
 ## Introduction
 The motivation of this article is to show how easily one can setup a resiliant, scalable and budget data processing plateform infrastucture in cloud thanks to Terraform/Terragrunt. In this article, I tackle only AWS cloud provider, I will make the same thing with GCP in an another article.
 
