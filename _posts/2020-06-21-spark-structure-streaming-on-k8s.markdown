@@ -1,58 +1,72 @@
 ---
-title:  "Spark structure streaming on Kubernetes"
-date:   2020-06-21 16:36:37 +0100
+title: "Running Spark Structured Streaming on Kubernetes"
+date: 2020-06-21 16:36:37 +0100
 categories: Spark Kubernetes
 tags:
-  - Devops
   - Spark
   - Kubernetes
+  - Devops
 ---
 
 ## Introduction
-There are many ways to process real time data, In the company I work for, we use Kafka as the message service. Naturally it comes to use Kafka streaming framework(kafka connect/kafka stream), After one year experience, we realize that the limitation is quite big , it can only deal with Kafka input source and we have hard time to efficiently reprocess historical data. In Kafka service point of view, it is a bad practice to persist a big amount of data(more than 30 days), so we persist our data to cloud storage(AWS S3), for the historical data reprocess we need to read from S3, we used AWS Glue to accomplish the task. Hence we have one code base to process the real time data(kafka streaming), one code base for the historical process(AWS Glue). it introduces problems of code base sync. Meanwhile, we were also surprised by the AWS Glue bill.
 
-Idea of Spark makes surface then, it can read from various data sources(Kafka, S3), it does real time streaming(structure streaming) and batch processing. we can have one code base to do everything.
+There are many ways to process real-time data. At the company I work for, we use Kafka as our messaging service. Naturally, we first leaned toward Kafka streaming frameworks such as Kafka Connect and Kafka Streams. After about a year of experience, we realized the limitations were quite significant. They only handle Kafka as an input source, and we also had a hard time reprocessing historical data efficiently.
 
-Following chart is the pipeline that we want to implement:
+From a Kafka service perspective, keeping large amounts of data for a long time, for example more than 30 days, is not a great practice. So we persist our data to cloud storage on AWS S3. For historical data reprocessing, we used AWS Glue. That meant we ended up with one code base for real-time processing with Kafka streaming, and another code base for historical processing with AWS Glue. As expected, keeping both code bases in sync became painful. At the same time, we were also quite surprised by the AWS Glue bill.
 
-| ![data pipeline with spark on Kubernetes]({{ site.url }}{{ site.baseurl }}/assets/images/spark-k8s/spark_on_k8s_archi.png)
+That is where Spark came in. Spark can read from multiple data sources such as Kafka and S3, and it supports both real-time processing with Structured Streaming and batch workloads. In other words, we can use one code base to do both.
+
+The following chart shows the pipeline we wanted to implement:
+
+| ![data pipeline with Spark on Kubernetes]({{ site.baseurl }}/assets/images/spark-k8s/spark_on_k8s_archi.png) |
 |:--:|
-| *Data pipelines with spark on Kubernetes* |
+| *Data pipelines with Spark on Kubernetes* |
 
-In this Article, I will focus on how to run spark streaming on Kubernetes, it concerns only the red box part of the chart. I will write another article to cover the historical processing
+In this article, I will focus on how to run Spark Structured Streaming on Kubernetes. This only covers the red box in the diagram above. I will write another article to cover historical processing.
 
-## Spark modes
-Spark has native kubernetes support since 2.3, detailed docs can be found [here](https://spark.apache.org/docs/2.4.5/running-on-kubernetes.html). we have few options to deploy spark on kubernetes clusters
+## Spark deployment modes on Kubernetes
+
+Spark has had native Kubernetes support since version 2.3. The official documentation can be found [here](https://spark.apache.org/docs/2.4.5/running-on-kubernetes.html). There are several ways to deploy Spark on Kubernetes clusters:
+
 1. [Cluster mode](https://spark.apache.org/docs/2.4.5/running-on-kubernetes.html#cluster-mode)
 2. [Client mode](https://spark.apache.org/docs/2.4.5/running-on-kubernetes.html#client-mode)
-3. [Kubernetes spark operator](https://github.com/GoogleCloudPlatform/spark-on-k8s-operator)
+3. [Kubernetes Spark Operator](https://github.com/GoogleCloudPlatform/spark-on-k8s-operator)
 4. [Local mode](https://spark.apache.org/docs/latest/submitting-applications.html#master-urls)
 
-We have experienced all 4, we retained the **client mode** and **local mode** for our usage.
+We have experimented with all four. In the end, we kept **client mode** and **local mode** for our use cases.
 
 ### Spark cluster mode
-In the [Spark cluster mode](https://spark.apache.org/docs/2.4.5/running-on-kubernetes.html#cluster-mode), `spark-submit` creates a spark driver pod, the driver pod will then create executor pods
-* The driver pod need to run on a [servieaccount](https://spark.apache.org/docs/2.4.5/running-on-kubernetes.html#rbac) to allow it to create spark executor pods
-* The CI/CD runner(or instance) need to contain spark binary to do `spark-submit`
-* If the driver pod dies, the app is gone(no restart policy)
 
-As you can see, there are some major drawbacks with this approach. especially the streaming app is supposed for long run, but kubernetes cluster can kill pod sometime on rebalance, so it is an absolute no go
+In [Spark cluster mode](https://spark.apache.org/docs/2.4.5/running-on-kubernetes.html#cluster-mode), `spark-submit` creates a Spark driver pod, and the driver pod then creates executor pods.
 
-Nevertheless, you can check out this [repo](https://github.com/flix-tech/k8s-spark-cluster-mode-example) if you want to run it.
+Some important characteristics of this mode:
+
+* The driver pod needs to run with a [service account](https://spark.apache.org/docs/2.4.5/running-on-kubernetes.html#rbac) so that it can create Spark executor pods.
+* The CI/CD runner or machine that runs `spark-submit` needs to contain the Spark binaries.
+* If the driver pod dies, the application is gone, because there is no built-in restart behavior at the Spark level in this setup.
+
+As you can see, there are some major drawbacks with this approach. A streaming application is supposed to run for a long time, but Kubernetes can kill pods during node maintenance, rescheduling, or rebalancing. For us, that made this mode a complete no-go for long-running streaming jobs.
+
+That said, if you want to try it, you can check out this [repo](https://github.com/flix-tech/k8s-spark-cluster-mode-example).
 
 ### Spark client mode
-In the [Spark client mode](https://spark.apache.org/docs/2.4.5/running-on-kubernetes.html#client-mode), you can pack the spark driver in a kubernetes deployment(or replicatset), it can restart the driver pod on any disruption and CI/CD runner don't need to contain spark binary(simple helm chart deployment). It brought up some other complications though
-* Client mode [networking](https://spark.apache.org/docs/2.4.5/running-on-kubernetes.html#client-mode-networking) has to be correct
-* Lengthy kubernetes related configurations for spark
 
-To configure the client mode network, you should configure your kubernetes deployments to have environment variables of driver pod IP/name:
+In [Spark client mode](https://spark.apache.org/docs/2.4.5/running-on-kubernetes.html#client-mode), you can package the Spark driver inside a Kubernetes `Deployment` or `ReplicaSet`. This gives you a better operational model, because Kubernetes can restart the driver pod after disruptions, and your CI/CD runner does not need to contain the Spark binaries. A simple Helm deployment is enough.
+
+However, client mode brings its own complications:
+
+* [Networking for client mode](https://spark.apache.org/docs/2.4.5/running-on-kubernetes.html#client-mode-networking) must be configured correctly.
+* Spark requires a fairly long list of Kubernetes-related properties.
+
+To configure networking for client mode, your Kubernetes deployment should expose environment variables such as the driver pod IP, name, and namespace:
+
 ```yaml
 {% raw  %}
     containers:
         - name: {{ .Release.Name }}
         ....
           env:
-            #for client mode network configuration on spark-submit
+            # for client mode network configuration on spark-submit
             - name: MY_POD_NAME
               valueFrom:
                 fieldRef:
@@ -68,38 +82,42 @@ To configure the client mode network, you should configure your kubernetes deplo
             ...
 {% endraw  %}
 ```
-Start the spark driver with upon env variables:
+
+Then start the Spark driver with those environment variables:
+
 ```bash
-    #spark-submit executed to spin up spark driver
-    #MY_POD_NAMESPACE/MY_POD_IP/MY_POD_NAME get from pod inspection in deployment/pod
-    #KUBERNETES_SERVICE_HOST/KUBERNETES_SERVICE_PORT are native k8s pod env variables
-    #SERVICE_NAME is given by deployment, set as the service name
-    #CONTAINER_IMAGE is used for executor pod
-    #PROPERTIES_FILE is the spark properties
-    #PYTHON_FILE is the spark application file
-    /opt/spark/bin/spark-submit \
-    --master k8s://https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT \
-    --deploy-mode client \
-    --name $SERVICE_NAME \
-    --conf spark.kubernetes.namespace=$MY_POD_NAMESPACE \
-    --conf spark.kubernetes.driver.pod.name=$MY_POD_NAME \
-    --conf spark.driver.host=$MY_POD_IP \
-    --conf spark.driver.port=$SPARK_DRIVER_PORT \
-    --conf spark.kubernetes.container.image=$CONTAINER_IMAGE \
-    --conf spark.pyspark.driver.python=/usr/bin/python3 \
-    --properties-file $PROPERTIES_FILE \
-    --py-files $PY_FILES \
-    $PYTHON_FILE
-    ;;
+# spark-submit is executed to start the Spark driver
+# MY_POD_NAMESPACE / MY_POD_IP / MY_POD_NAME come from pod inspection in the deployment/pod
+# KUBERNETES_SERVICE_HOST / KUBERNETES_SERVICE_PORT are native Kubernetes pod environment variables
+# SERVICE_NAME is provided by the deployment and used as the service name
+# CONTAINER_IMAGE is used for executor pods
+# PROPERTIES_FILE is the Spark properties file
+# PYTHON_FILE is the Spark application file
+/opt/spark/bin/spark-submit \
+--master k8s://https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT \
+--deploy-mode client \
+--name $SERVICE_NAME \
+--conf spark.kubernetes.namespace=$MY_POD_NAMESPACE \
+--conf spark.kubernetes.driver.pod.name=$MY_POD_NAME \
+--conf spark.driver.host=$MY_POD_IP \
+--conf spark.driver.port=$SPARK_DRIVER_PORT \
+--conf spark.kubernetes.container.image=$CONTAINER_IMAGE \
+--conf spark.pyspark.driver.python=/usr/bin/python3 \
+--properties-file $PROPERTIES_FILE \
+--py-files $PY_FILES \
+$PYTHON_FILE
+;;
 ```
+
 {% capture notice-2 %}
-You absolutely need to configure consistent
-spark.kubernetes.namespace, spark.kubernetes.driver.pod.name, spark.driver.host, spark.driver.port values
+You absolutely need to keep the following values consistent:
+`spark.kubernetes.namespace`, `spark.kubernetes.driver.pod.name`, `spark.driver.host`, and `spark.driver.port`.
 {% endcapture %}
 <div class="notice">{{ notice-2 | markdownify }}</div>
-Kubernetes related spark properties:
 
-```
+Here are some of the Kubernetes-related Spark properties we used:
+
+```yaml
 spark.kubernetes.pyspark.pythonVersion=3
 spark.kubernetes.allocation.batch.size=10
 spark.kubernetes.allocation.batch.delay=1s
@@ -123,62 +141,78 @@ spark.kubernetes.memoryOverheadFactor=0.1
 spark.task.cpus=1
 ```
 
-As you can see, configurations are lengthy, you can checkout our [repo](https://github.com/flix-tech/k8s-spark-example) to run it on the local minikube or deploy to the cloud.
+As you can see, the configuration is quite lengthy. You can check out our [repo](https://github.com/flix-tech/k8s-spark-example) to run it locally on Minikube or deploy it to the cloud.
 
-### Kubernetes spark operator
-[It](https://github.com/GoogleCloudPlatform/spark-on-k8s-operator) implements a set of yaml configurations to deploy your spark application. it is simple and clean, unfortunately it asks too many [permissions](https://github.com/helm/charts/blob/master/incubator/sparkoperator/templates/spark-operator-rbac.yaml) to our kubernetes cluster, for the security reasons, we discard it. I highly recommend you to have a look at the project and examples.
+### Kubernetes Spark Operator
+
+The [Kubernetes Spark Operator](https://github.com/GoogleCloudPlatform/spark-on-k8s-operator) provides a clean declarative way to deploy Spark applications with YAML. It is simple and elegant. Unfortunately, it requires too many [permissions](https://github.com/helm/charts/blob/master/incubator/sparkoperator/templates/spark-operator-rbac.yaml) for our Kubernetes clusters. For security reasons, we decided not to use it.
+
+Still, I highly recommend having a look at the project and its examples.
 
 ### Spark local mode
-The simplest and probably fits 90% of your usages. We have considered this option after a few months running with spark client mode. At some point I realized that we can take advantage of the kubernetes pod cpu/memory adjustment feature to scale spark applications, the uplimit of the Spark in local mode is the underline single kubernetes node capacity, and in most cases we don't need that much. By simply packing a spark standalone into Kubernetes deployment, we gain following advantages:
 
-* No extra serviceaccount to setup
-* Driver and executors in the same pod -- no data exchange between driver and executors over network
-* Driver and executors share same heap space for better RAM usage
-* No lengthy spark configurations
-* No complicated client network configurations
+This is the simplest mode, and probably the right fit for 90% of use cases.
+
+We started considering this option after running Spark client mode for a few months. At some point, I realized that we could take advantage of Kubernetes pod CPU and memory resource settings to scale Spark applications directly. In local mode, the upper limit is the capacity of a single Kubernetes node, and in many cases that is already more than enough.
+
+By simply packaging a standalone Spark application in a Kubernetes deployment, we gained several advantages:
+
+* No extra service account to set up
+* Driver and executors run in the same pod, so there is no network exchange between them
+* Driver and executors share the same heap space, which can improve RAM usage
+* No lengthy Spark configuration
+* No complicated client-mode networking setup
 
 Spark startup script:
+
 ```bash
-    /opt/spark/bin/spark-submit \
-    --name $SERVICE_NAME \
-    --conf spark.pyspark.python=/usr/bin/python3 \
-    --properties-file $PROPERTIES_FILE \
-    --py-files $PY_FILES \
-    $PYTHON_FILE
-    ;;
+/opt/spark/bin/spark-submit \
+--name $SERVICE_NAME \
+--conf spark.pyspark.python=/usr/bin/python3 \
+--properties-file $PROPERTIES_FILE \
+--py-files $PY_FILES \
+$PYTHON_FILE
+;;
 ```
+
 Spark properties:
+
 ```yaml
 spark_properties: |-
-  #set spark master local when spark_driver.mode is local, set number of executors in `[]`
+  # set spark master to local when spark_driver.mode is local, set number of executors in `[]`
   spark.master=local[6]
   spark.driver.memory=6g
 ```
-for the spark app resource configuration, simply set kubernetes resources:
+
+For Spark application resource configuration, you can simply set Kubernetes resources:
+
 ```yaml
-  resources:
-    requests:
-      cpu: 1
-      ephemeral-storage: 1Gi
-      memory: 6Gi
-    limits:
-      memory: 12Gi
+resources:
+  requests:
+    cpu: 1
+    ephemeral-storage: 1Gi
+    memory: 6Gi
+  limits:
+    memory: 12Gi
 ```
-As you can see, it is much simpler than with spark client mode
 
-We only keep spark on client mode for the historical data reprocess, as it can dispatch executors to many Kubernetes nodes for better parallelism.
+As you can see, it is much simpler than Spark client mode.
 
-you can checkout our [repo](https://github.com/flix-tech/k8s-spark-example) to run it on the local minikube or deploy to cloud
+We only keep Spark client mode for historical data reprocessing, because it can distribute executors across multiple Kubernetes nodes for better parallelism.
 
-## Conclusions and follow up
-Running spark on Kubernetes is very convenient, you can forget about cluster capacity provision as run on Yarn or Mesos.
-You can choose from different operation modes. Here is a table to help you to make decisions
+You can check out our [repo](https://github.com/flix-tech/k8s-spark-example) to run it locally on Minikube or deploy it to the cloud.
 
-| Spark modes       | Configurations |Resillient |Permissions| Parallelism  |
-| :-------------:   |:-------------: | :-----:   | :----: |:-----:       |
-| Cluster mode      | Lengthy        | No   |Admin on namespace   |Uplimit to cluster capacity|
-| Client mode       | Lengthy        | Yes  |Admin on namespace| Uplimit to cluster capacity|
-| k8S Spark operator| Clean and neat | Yes  |Admin on cluster(for setup) |Uplimit to cluster capacity|
-| Local mode        | Clean          | Yes  |No |Uplimit to single k8s node |
+## Conclusion
 
-Maybe I will make an article for a deeper explanation of my Spark deployment Helm chart in the future. 
+Running Spark on Kubernetes is very convenient. Compared with running it on YARN or Mesos, you do not need to think as much about cluster capacity provisioning up front.
+
+You can choose from several operating modes depending on your needs. Here is a simple summary to help with that decision:
+
+| Spark mode         | Configuration | Resilient | Permissions                  | Parallelism                     |
+|:-------------------|:-------------:|:---------:|:----------------------------|:--------------------------------|
+| Cluster mode       | Lengthy       | No        | Admin on namespace          | Up to cluster capacity          |
+| Client mode        | Lengthy       | Yes       | Admin on namespace          | Up to cluster capacity          |
+| Kubernetes operator| Clean         | Yes       | Admin on cluster for setup  | Up to cluster capacity          |
+| Local mode         | Clean         | Yes       | No                          | Up to single Kubernetes node    |
+
+Maybe I will write another article in the future with a deeper explanation of the Helm chart we use to deploy Spark.

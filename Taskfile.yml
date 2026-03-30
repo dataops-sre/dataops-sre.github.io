@@ -9,3 +9,9 @@ tasks:
         docker run --rm -p 4000:4000 --volume="$PWD:/site"
         --volume="$PWD/vendor/bundle:/usr/local/bundle"
         -it bretfisher/jekyll-serve:stable-20260315-2119a31 jekyll s --host=0.0.0.0 --force_polling
+
+# * keep same tone.
+# * blog-style polish for smoother flow.
+# * technical accuracy/style consistency.
+# * title + headings optimization
+# * SEO/readability improvements

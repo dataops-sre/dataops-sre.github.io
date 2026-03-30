@@ -1,30 +1,36 @@
 ---
-title:  "Behind the Docker Daemon has the OOM-Killer"
-date:   2019-03-26 16:36:37 +0100
+title: "Understanding the Docker OOM killer from inside a container"
+date: 2019-03-26 16:36:37 +0100
 categories: Docker Kubernetes Kernel
 tags:
   - Devops
   - Docker
 ---
 
-Recently I have written an [article](https://mrmuggymuggy.github.io/datadog/monitoring/jmx/kubernetes/datadog-jmx/) about Datadog on Kubernetes, The Datadog jmxfetch(java) process got killed by the host OOM-killer due to the JVM heapsize over allocation, I was surprise on the discovery. I knew that the containers and the host shared the same kernel space, I thought that docker daemon would just fail the container instead of actively intervene by killing the process.
+Recently I wrote an [article](https://dataops-sre.github.io/datadog/monitoring/jmx/kubernetes/datadog-jmx/) about Datadog on Kubernetes. In that case, the Datadog `jmxfetch` Java process was killed by the host OOM killer because of JVM heap overallocation. I was quite surprised by that discovery. I already knew that containers and the host share the same kernel space, but I had assumed Docker would simply fail the container instead of actively intervening by killing the process.
 
-Java has actually adapte to the extensive container usage nowadays by adding `XX:+UseCGroupMemoryLimitForHeap` option, it is really handy that the applications allocate the heapsize according to the container’s allocated resources, it allows a better application scalability. You can find plenty of articles with detailed explications.
+Java has actually adapted well to widespread container usage by adding the `-XX:+UseCGroupMemoryLimitForHeap` option. It is very handy because applications can size their heap according to the resources allocated to the container, which helps with application scalability. You can find plenty of articles that explain this behavior in detail.
 
-What this article interest on, is how to find out the container resource limits and usage in a introspect way. Sometime, inside your application you just need to know the current resource limits/usage, Like how JVM knows the cgroup limits.
+What I want to focus on in this article is how to inspect container resource limits and usage from inside the container itself. Sometimes, inside your application, you simply need to know the current resource limits and usage, just like the JVM detects cgroup limits.
 
-In the unix based containers you can find out the cgroup limit and usage in /sys/fs/cgroup
+## Inspecting cgroup limits from inside a container
 
-| ![memory limit and usage inside your docker container]({{ site.url }}{{ site.baseurl }}/assets/images/docker-oomkiller/cgroup1.png)
+In Unix-based containers, you can inspect cgroup limits and usage under `/sys/fs/cgroup`.
+
+| ![memory limit and usage inside your docker container]({{ site.baseurl }}/assets/images/docker-oomkiller/cgroup1.png)
 |:--:|
-| *memory limit and usage inside your docker container* |
+| *Memory limit and usage inside your Docker container* |
 
-upon you can find the total memory limit, and in memory.stat you can find the total RSS memory usage at the moment for all the processes running inside the docker container.
-cgroup contains also many other system metrics, such as cpu, devices and pids, the whole eco-system is a bit complex, a good documentation can be found on [link](https://www.kernel.org/doc/Documentation/cgroup-v1/cgroups.txt).
-one last thing, you can find the pid mapping from container to host with /pid/$pid/cgroup
+From there, you can find the total memory limit, and in `memory.stat` you can find the current RSS memory usage for all processes running inside the container.
 
-| ![alt]({{ site.url }}{{ site.baseurl }}/assets/images/docker-oomkiller/cgroup2.png)
+Cgroups also expose many other system metrics, such as CPU, devices, and PIDs. The whole ecosystem is a bit complex, but a good reference can be found in the Linux kernel documentation [here](https://www.kernel.org/doc/Documentation/cgroup-v1/cgroups.txt).
+
+## Mapping container PIDs to host PIDs
+
+One last useful detail: you can find the PID mapping from a container to the host via `/proc/$pid/cgroup`.
+
+| ![alt]({{ site.baseurl }}/assets/images/docker-oomkiller/cgroup2.png)
 |:--:|
-| *container to host pid mapping* |
+| *Container to host PID mapping* |
 
-it is interesting.
+It is quite interesting.

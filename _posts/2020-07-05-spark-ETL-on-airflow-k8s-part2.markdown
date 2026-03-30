@@ -1,40 +1,52 @@
 ---
-title:  "Spark ETL -- Airflow on Kubernetes, Part 2"
-date:   2020-07-03 16:36:37 +0100
+title: "Spark ETL with Airflow on Kubernetes — Part 2"
+date: 2020-07-05 22:36:37 +0100
 categories: Spark Kubernetes Airflow
 tags:
-  - Devops
+  - DevOps
+  - Data Engineering
   - Airflow
-  - Spark
+  - Apache Spark
   - Kubernetes
+  - AWS
+  - ETL
+  - KubernetesPodOperator
 ---
 
 ## Introduction
-Let's talk about pitfalls and inconveniences of airflow!
-It is the following part of this [article]({{ site.url }}{{ site.baseurl }}/spark/kubernetes/airflow/spark-ETL-on-airflow-k8s-part1/)
+
+Let’s talk about the pitfalls and inconveniences of Airflow.
+
+This article is the follow-up to [Part 1]({{ site.baseurl }}/spark/kubernetes/airflow/spark-ETL-on-airflow-k8s-part1/), where I explained how we run Spark ETL workloads with Airflow on Kubernetes.
 
 ## Pitfalls and inconveniences
-Keep your airflow dag simple!
 
-It is based on my own experience and applies with our airflow setup: 
-* Airflow on kubernetes with local executor mode
-* Tasks are run with KubernetesPodOperator.
+Keep your Airflow DAGs simple.
 
-Following are problems I have encountered, there are many more, Those are what mark me the most:
-1. Dag's [`dagrun_timeout`](https://airflow.apache.org/docs/stable/_modules/airflow/models/dag.html#DAG) and operator's `execution_timeout` parameter don't apply, because KubernetesPodOperator does not implement [`on_kill`](https://stackoverflow.com/questions/50054777/airflow-task-is-not-stopped-when-execution-timeout-gets-triggered) method.
-2. Backfill disregards Dag's `max_active_runs` parameter on retrigger, it is still not fixed upto the time this article has been written, check [here](https://issues.apache.org/jira/browse/AIRFLOW-137)
-3. A Dag can be triggered with parameters this way : `airflow trigger_dag 'example_dag' -r 'run_id' --conf '{"key":"value"}'` it does not work when you retrigger backfill. e.g, backfill on day `x` with `--conf '{"key":"value1"}'` rerun backfill on day `x` with `--conf '{"key":"value2"}'` the `key` keeps `value1` 
-4. Can't configure kubernetes ephemeral storage resource with KubernetesPodOperator
-5. Dag run history has not been clearly properly. During dag development, I adjust dag or tasks parameters frequently, it messes up with the scheduler database, some dag run can't be marked as failed or cleared, even after deleting and redeploying dag, problems still persist. I need to run sql clean query against airflow instance database to solve problems
-6. Kubernetes attached volume name is not a templated field. Spark job use large disk space(when memory is not enough). thus to attach volume to the kubernetes pod. it is problematic for parallel backfilling. e.g we want to reprocess(backfill) in parallel from day `01-01-2020` to `04-01-2020`, I create volumes with name : `{% raw  %}"spark-pv-claim-{{ ds_nodash }}{% endraw  %}"`, it results to 3 volumes :  `"spark-pv-claim-20200101"`, `"spark-pv-claim-20200103"`, `"spark-pv-claim-20200103"` since we can't configure persistentVolumeClaim name as a templated field with KubernetesPodOperator you can not dynamically attach volumes.
+The points below are based on my own experience and apply to our setup:
 
-Solutions and workaround for upon problems:
-1. Use bash timeout command, configure  KubernetesPodOperator with `"cmds": ["timeout", "45m", "/bin/sh", "-c"],` gives you 45 minutes timeout of spark task.
-2. Make dag executions independent, no dependencies to the past, as the `max_active_runs` problem only happens for backfilling, clear dag history before retrigger.
-3. Use airflow variables instead. e.g we have a `force_reprocess` in the dag, set variable before backfill `airflow variables --set force_reprocess false;` backfill with `airflow backfill "historical_reprocess" --start_date "y" --end_date "y" --reset_dagruns -y;` in the dag I get the variable value with `force_reprocess = Variable.get("force_reprocess", default_var=True)` you need to remember to delete variable after backfill.
-4. Airflow version from [1.10.11](https://github.com/apache/airflow/blob/1.10.11rc1/airflow/kubernetes/pod.py) will have ephemeral storage support.
-5. run sql clean query against the airflow database, you can find queries in this [post](https://www.astronomer.io/guides/airflow-queries/)
-6. This feature is crucial for us, so I extended KubernetesPodOperator to manage volume dynamically. I added a new templated field as `"pvc_name"`
+* Airflow on Kubernetes with the Local executor
+* Tasks executed through `KubernetesPodOperator`
+
+These are the problems that stood out the most for me:
+
+1. A DAG’s [`dagrun_timeout`](https://airflow.apache.org/docs/stable/_modules/airflow/models/dag.html#DAG) and an operator’s `execution_timeout` parameter do not apply properly, because `KubernetesPodOperator` does not implement [`on_kill`](https://stackoverflow.com/questions/50054777/airflow-task-is-not-stopped-when-execution-timeout-gets-triggered).
+2. Backfill ignores the DAG’s `max_active_runs` parameter when retriggered. At the time this article was written, this was still not fixed. See [here](https://issues.apache.org/jira/browse/AIRFLOW-137).
+3. A DAG can be triggered with parameters like this: `airflow trigger_dag 'example_dag' -r 'run_id' --conf '{"key":"value"}'`. However, this does not work correctly when you retrigger a backfill. For example, if you backfill day `x` with `--conf '{"key":"value1"}'` and then rerun the backfill for the same day with `--conf '{"key":"value2"}'`, the `key` still keeps `value1`.
+4. You cannot configure Kubernetes ephemeral storage resources with `KubernetesPodOperator`.
+5. DAG run history is not always cleaned up properly. During DAG development, I often adjust DAG or task parameters, and this can mess up the scheduler database. Some DAG runs cannot be marked as failed or cleared. Even after deleting and redeploying the DAG, problems can persist. In those cases, I had to run SQL cleanup queries directly against the Airflow metadata database.
+6. Kubernetes attached volume names are not templated fields. Spark jobs can use a large amount of disk space when memory is not enough, so attaching volumes to Kubernetes pods becomes important. This becomes problematic for parallel backfills. For example, if we want to reprocess data in parallel from day `01-01-2020` to `04-01-2020`, I would like to create volume names like `{% raw  %}"spark-pv-claim-{{ ds_nodash }}"{% endraw  %}`. In practice, since `persistentVolumeClaim` names are not templated fields in `KubernetesPodOperator`, volumes cannot be attached dynamically the way we need.
+
+## Solutions and workarounds
+
+Here are the solutions and workarounds we used for the problems above:
+
+1. Use the shell `timeout` command. For example, configure `KubernetesPodOperator` with `"cmds": ["timeout", "45m", "/bin/sh", "-c"]` to enforce a 45-minute timeout for the Spark task.
+2. Make DAG executions independent and avoid dependencies on past runs. Since the `max_active_runs` problem mainly happens during backfills, clear the DAG history before retriggering.
+3. Use Airflow variables instead. For example, we have a `force_reprocess` variable in the DAG. Before a backfill, we set it with `airflow variables --set force_reprocess false;`, then run `airflow backfill "historical_reprocess" --start_date "y" --end_date "y" --reset_dagruns -y;`. Inside the DAG, we read it with `force_reprocess = Variable.get("force_reprocess", default_var=True)`. You just need to remember to delete the variable after the backfill is done.
+4. Airflow version [1.10.11](https://github.com/apache/airflow/blob/1.10.11rc1/airflow/kubernetes/pod.py) adds ephemeral storage support.
+5. Run SQL cleanup queries against the Airflow database. You can find useful examples in this [post](https://www.astronomer.io/guides/airflow-queries/).
+6. This feature was crucial for us, so I extended `KubernetesPodOperator` to manage volumes dynamically by adding a new templated field called `pvc_name`.
 
 ```python
 from airflow.contrib.operators.kubernetes_pod_operator import KubernetesPodOperator
@@ -50,7 +62,7 @@ class KubernetesPodWithVolumeOperator(KubernetesPodOperator):
     def __init__(self, pvc_name=None, *args, **kwargs):
         super(KubernetesPodWithVolumeOperator, self).__init__(*args, **kwargs)
         self.pvc_name = pvc_name
-sometime
+
     def execute(self, context):
         if self.pvc_name:
             volume_mount = VolumeMount(
@@ -63,31 +75,33 @@ sometime
             self.volumes.append(volume)
             self.volume_mounts.append(volume_mount)
         super(KubernetesPodWithVolumeOperator, self).execute(context)
-
 ```
+
 Usage of the custom operator:
+
 ```python
 {% raw  %}
-    historical_process = KubernetesPodWithVolumeOperator(
-        namespace=os.environ['AIRFLOW__KUBERNETES__NAMESPACE'],
-        name="historical-process",
-        image=historical_process_image,
-        image_pull_policy="IfNotPresent",
-        cmds=["/bin/sh","-c"],
-        arguments=[spark_submit_sh],
-        env_vars=envs,
-        task_id="historical-process-1",
-        is_delete_operator_pod=True,
-        in_cluster=True,
-        hostnetwork=False,
-        #important env vars to run spark submit
-        pod_runtime_info_envs=pod_runtime_info_envs,
-        pvc_name="spark-pv-claim-{{ ds_nodash }}",
-    )
+historical_process = KubernetesPodWithVolumeOperator(
+    namespace=os.environ['AIRFLOW__KUBERNETES__NAMESPACE'],
+    name="historical-process",
+    image=historical_process_image,
+    image_pull_policy="IfNotPresent",
+    cmds=["/bin/sh", "-c"],
+    arguments=[spark_submit_sh],
+    env_vars=envs,
+    task_id="historical-process-1",
+    is_delete_operator_pod=True,
+    in_cluster=True,
+    hostnetwork=False,
+    # important env vars to run spark submit
+    pod_runtime_info_envs=pod_runtime_info_envs,
+    pvc_name="spark-pv-claim-{{ ds_nodash }}",
+)
 {% endraw  %}
 ```
 
 ## Conclusion
-Despite of many inconveniences and pitfalls, our pipelines run fine so far with the Airflow scheduler. We achieved huge cost reduction by moving away from AWS Glue. Historical data reprocessing can be done in a single click with backfilling. Realtime data process and the historical data process are in the same code base, Data pipeline steps are now transparent with Dag definition in python.
 
-I will in the future study other alternatives such as [perfect core](https://docs.prefect.io/), [kedro](https://kedro.readthedocs.io/en/stable/index.html) or [dagster](https://github.com/dagster-io/dagster/). Maybe there are better tools out there.
+Despite the many inconveniences and pitfalls, our pipelines have been running fine so far with the Airflow scheduler. We achieved a significant cost reduction by moving away from AWS Glue. Historical data reprocessing can now be done with a single backfill command. Real-time and historical data processing now live in the same code base, and the pipeline steps are transparent thanks to DAG definitions in Python.
+
+In the future, I would also like to study alternatives such as [Prefect Core](https://docs.prefect.io/), [Kedro](https://kedro.readthedocs.io/en/stable/index.html), or [Dagster](https://github.com/dagster-io/dagster/). There may be better tools out there.

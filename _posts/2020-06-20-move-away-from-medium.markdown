@@ -1,15 +1,23 @@
 ---
-title:  "I move away from Medium"
-date:   2020-06-20 16:36:37 +0100
+title: "Why I moved away from Medium to Github page"
+date: 2020-06-20 16:36:37 +0100
 categories: General
 tags:
   - General
 ---
 
-It is been more than one year that I have not updated my [Medium space](https://medium.com/@mrmug). unfortunately Medium seems not be a suitable tool for me. As a tech person, it is way too limited for my usage(code highlighting etc)
+It has been more than a year since I last updated my [Medium space](https://medium.com/@mrmug). Unfortunately, Medium does not seem to be the right tool for me anymore. As a technical person, I find it too limited for the way I write, especially when it comes to things like code formatting and syntax highlighting.
 
-As I use Markdown and Git daily, and recently I discovered that Github has the native Jekyll support to publish and host pages. so I decided to move there. and hopefully it will motivate me for more publications.
+Since I already use Markdown and Git every day, and recently discovered that GitHub has native support for publishing Jekyll sites, moving there felt like a natural choice. So I decided to make the switch, and hopefully it will motivate me to publish more often.
 
-My new blog link is : [https://mrmuggymuggy.github.io](https://mrmuggymuggy.github.io/)
+## My new blog
 
-For the moment I just moved 2 existing articles here, I have bunch of other articles in draft related to Spark/Airflow on Kubernetes and Terragrunt, I hope I will have time to finish them. One of the draw back with Jekyll on github is the comments management, I will try to figure it out in the future.
+My new blog is here: [https://dataops-sre.github.io](https://dataops-sre.github.io/)
+
+## Why this move makes more sense for me
+
+For now, I have only moved two existing articles over. I still have a bunch of drafts related to Spark, Airflow on Kubernetes, and Terragrunt, and I hope I will have time to finish them.
+
+One drawback of using Jekyll on GitHub Pages is comment management, which is definitely less straightforward than on Medium. I will try to figure out a good solution for that in the future.
+
+Still, overall this setup feels much closer to the way I already work, and that makes it a better fit for me.
