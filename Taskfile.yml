@@ -1,13 +1,11 @@
 # https://taskfile.dev
 
-version: '2'
+version: "3"
 
 tasks:
-
   local.dev:
     cmds:
       - >
-        eval $(minikube docker-env);
-        docker run --rm -p 4000:4000 --volume="$PWD:/srv/jekyll"
+        docker run --rm -p 4000:4000 --volume="$PWD:/site"
         --volume="$PWD/vendor/bundle:/usr/local/bundle"
-        -it jekyll/jekyll:3.8 jekyll s --force_polling
+        -it bretfisher/jekyll-serve:stable-20260315-2119a31 jekyll s --host=0.0.0.0 --force_polling
