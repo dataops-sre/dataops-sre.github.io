@@ -1,19 +1,19 @@
 ---
-title:  "Collect jmx metrics of a Kubernetes deployment with datadog"
+title:  "Collect JMX metrics from a Kubernetes deployment with Datadog"
 date:   2019-03-12 16:36:37 +0100
 categories: Datadog Monitoring Jmx Kubernetes
 tags:
   - Devops
   - Datadog
 ---
-Since 2018 My team decided to swich to Datadog to collect the application related metrics. 
+Since 2018, my team has been using Datadog to collect application-related metrics.
 
-We use Kafka as our message queuing service, and we have Kafka connect/Kafka stream applications(JVM based)to do the realtime Data enrichment/transformation/unload. Our applications are deployed on AWS managed Kubernetes clusters. In Kafka connect/stream framework JMX metrics are available by default. so, we need to collect those metrics constantly and continually with Kubernetes pods restarts or with the application redeployment.
+We use Kafka as our message queuing service, and we have Kafka Connect/Kafka Streams applications (JVM-based) to perform real-time data enrichment, transformation, and unload tasks. Our applications are deployed on AWS-managed Kubernetes clusters. In Kafka Connect/Streams frameworks, JMX metrics are available by default. So we need to collect those metrics consistently, even when Kubernetes pods restart or applications are redeployed.
 
-Datadog has Kubernetes integration which allows to collect application JMX metrics with the service auto-discovery. You need to run [Kubernetes daemon-set in your cluster](https://docs.datadoghq.com/agent/kubernetes) to act as a metric collection agent from pods. And you need to follow their [JMX guide](https://docs.datadoghq.com/integrations/java) to configure your pod annotations  Of course it was not as easy as it has been advertised. There were many bugs on their jmxfetcher back then, after quite some back and forth with Datadog Devs, we managed to fix many bugs and finally have a relatively satifactory integration.
+Datadog provides Kubernetes integration that allows you to collect application JMX metrics through service autodiscovery. You need to run a [Kubernetes daemonset in your cluster](https://docs.datadoghq.com/agent/kubernetes) to act as a metric collection agent for pods. You also need to follow their [JMX guide](https://docs.datadoghq.com/integrations/java) to configure your pod annotations. Of course, it was not as easy as advertised. There were many bugs in their `jmxfetch` back then. After quite a bit of back-and-forth with Datadog engineers, we managed to fix many of those bugs and eventually got a relatively satisfactory integration.
 
-## Java app side configurations
-For a kafka connector app we have following datadog jmx integration configuration :
+## Java app-side configuration
+For a Kafka Connector application, we use the following Datadog JMX integration configuration:
 ```yaml
 {% raw  %}
 instances:
@@ -30,9 +30,9 @@ logs:
 {% endraw %}
 ```
 
-the whole config file is [here](https://github.com/mrmuggymuggy/kafka-connect-s3offload/blob/master/kafka-connect-helm/monitoring/custom_metrics.yaml)
+The whole config file is [here](https://github.com/mrmuggymuggy/kafka-connect-s3offload/blob/master/kafka-connect-helm/monitoring/custom_metrics.yaml).
 
-Datadog autodiscovery relies on the datadog daemon-set to fetch upon jmx configuration from the kubernetes deployment annotations, so you need to transform upon yaml file to json format in the annotations.
+Datadog autodiscovery relies on the Datadog daemonset to read the JMX configuration from Kubernetes deployment annotations, so you need to transform the YAML file into JSON format inside the annotations.
 
 ```yaml
 {% raw  %}
@@ -42,7 +42,7 @@ Datadog autodiscovery relies on the datadog daemon-set to fetch upon jmx configu
         #Logs
         ad.datadoghq.com/{{ include "kafka-connect-helm.fullname" . }}.logs: '{{ toJson (fromYaml (tpl (.Files.Get "monitoring/custom_metrics.yaml") .)).logs }}'
         # label for existing template on file
-        ad.datadoghq.com/{{ include "kafka-connect-helm.fullname" . }}.check_names: '["{{ include "kafka-connect-helm.fullname" . }}-{{- uuidv4 | trunc 5 -}}"]'  # becomes instance tag in datadog
+        ad.datadoghq.com/{{ include "kafka-connect-helm.fullname" . }}.check_names: '["{{ include "kafka-connect-helm.fullname" . }}-{{- uuidv4 | trunc 5 -}}"]'  # becomes instance tag in Datadog
         ad.datadoghq.com/{{ include "kafka-connect-helm.fullname" . }}.init_configs: '[{{ toJson (fromYaml (tpl (.Files.Get "monitoring/custom_metrics.yaml") .)).init_config }}]'
         ad.datadoghq.com/{{ include "kafka-connect-helm.fullname" . }}.instances: '{{ toJson (fromYaml (tpl (.Files.Get "monitoring/custom_metrics.yaml") .)).instances }}'
     {{- end }}
@@ -50,26 +50,33 @@ Datadog autodiscovery relies on the datadog daemon-set to fetch upon jmx configu
       volumes:
 {% endraw %}
 ```
-the whole config file is [here](https://github.com//mrmuggymuggy/kafka-connect-s3offload/blob/master/kafka-connect-helm/templates/deployment.yaml)
 
-The code snippet use Helm(Go template) language
+The whole config file is [here](https://github.com//mrmuggymuggy/kafka-connect-s3offload/blob/master/kafka-connect-helm/templates/deployment.yaml).
+
+The code snippet uses Helm (Go template) syntax:
 ```jinja
 {% raw  %}
 '[{{ toJson (fromYaml (tpl (.Files.Get "monitoring/custom_metrics.yaml") .)).init_config }}]'
 {% endraw %}
-``` 
-to transform the yaml configuration to json and put as part of kubernetes deployment annotation at runtime.
+```
+to transform the YAML configuration into JSON and inject it as part of the Kubernetes deployment annotations at runtime.
 
 {% capture notice-2 %}
-Note very important points:
-1. The `name` in `ad.datadoghq.com/$name` in the annotation has to be the same as your container name
-2. The `ad.datadoghq.com/$name.check_names` better to contain a UUID, the datadog daemon-set stores the checkname and host ip pairs, during a service redeployment, the host ip will change, if the checkname stays the same, the datadog daemon-set will keep check on an outdated host ip and you will lost metrics
+Important points:
+1. The `name` in `ad.datadoghq.com/$name` in the annotation must be the same as your container name.
+2. `ad.datadoghq.com/$name.check_names` should ideally contain a UUID. The Datadog daemonset stores check name and host IP pairs. During a service redeployment, the host IP changes. If the check name stays the same, the Datadog daemonset may continue checking an outdated host IP, and you will lose metrics.
 {% endcapture %}
 <div class="notice">{{ notice-2 | markdownify }}</div>
 
-## Datadog daemonset configurations
+## Datadog daemonset configuration
 
-Everything works fine with upon setup, but after few weeks, we suddenly experienced missing application metrics, after investigations, we found out that the jmxfetcher process in the datadog daemonset has been constantly killed by our host OOM killer. The Datadog daemonset spawns up the jmxfetcher(Java) process as a sub process with`-XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap` jvm options, as the datadog main agent process took more memory over time, at some point Java process won’t be able to allocate memory anymore, thus get killed by the host OOM killer. Datadog has implemented auto-restart for the jmxfetcher, by the time the other processes took up to 80% of memory, it will try to restart the jmxfetcher again and again, thus, at one point we lost jmx metrics. I have implemented a solution based on upon finding to fail the liveness probe of datadog daemonset by patching the existing pod liveness probe tests:
+Everything worked fine with the initial setup, but after a few weeks we suddenly started seeing missing application metrics. After investigating, we found that the `jmxfetch` process inside the Datadog daemonset was being constantly killed by the host OOM killer.
+
+The Datadog daemonset spawns the `jmxfetch` (Java) process as a subprocess with the JVM options `-XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap`. As the main Datadog agent process consumed more memory over time, eventually the Java process was no longer able to allocate memory and got killed by the host OOM killer.
+
+Datadog had implemented auto-restart for `jmxfetch`, so once the other processes consumed too much memory, it kept trying to restart `jmxfetch` again and again. At that point, we started losing JMX metrics.
+
+Based on this finding, I implemented a solution that forces the Datadog daemonset liveness probe to fail by patching the existing pod liveness probe checks:
 
 Memory check based on the container cgroup:
 [container_memory_check.py](https://github.com/mrmuggymuggy/data-team-bootstrap/blob/master/data-team-bootstrap-helm/monitoring/container_memory_check.py)
@@ -101,9 +108,9 @@ def main():
 if __name__== "__main__":
   main()
 ```
-when the total memory of all processes is over 90% of the allocated resource, we will fail the memory check.
+When the total memory used by all processes exceeds 90% of the allocated resource, the memory check fails.
 
-Add checks to the end of the datadog liveness probe:
+Add these checks to the end of the Datadog liveness probe:
 [probe.sh](https://github.com/mrmuggymuggy/data-team-bootstrap/blob/master/data-team-bootstrap-helm/monitoring/probe.sh)
 ```bash
 #!/bin/sh
@@ -112,4 +119,5 @@ set -e
 /opt/datadog-agent/bin/agent/agent health
 python container_memory_check.py
 ```
-you can have a look at my [data-team-bootstrap](https://github.com/mrmuggymuggy/data-team-bootstrap) project, it contains the datadog daemon-set deployment setup.
+
+You can also take a look at my [data-team-bootstrap](https://github.com/mrmuggymuggy/data-team-bootstrap) project, which contains the Datadog daemonset deployment setup.
