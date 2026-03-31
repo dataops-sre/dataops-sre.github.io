@@ -1,25 +1,32 @@
 ---
-title:  "Data plateform infrastructure bootstrap"
-date:   2020-11-29 16:36:37 +0100
-categories: Kubernetes AWS Terraform Devops
+title: "Bootstrapping a data platform infrastructure on Kubernetes"
+date: 2020-11-29 16:36:37 +0100
+categories: DevOps Cloud-Infrastructure AWS Kubernetes
 tags:
-  - Devops
+  - DevOps
+  - SRE
+  - Data Engineering
+  - Data Processing
+  - Cloud Infrastructure
   - AWS
   - Terraform
+  - Terragrunt
   - Kubernetes
 ---
 
-## Introduction
-The motivation of this article is to show how easily one can setup a resiliant, scalable and budget data processing plateform infrastucture in cloud thanks to Terraform/Terragrunt. In this article, I tackle only AWS cloud provider, I will make the same thing with GCP in an another article.
+The goal of this article is to show how easily you can bootstrap a resilient, scalable, and budget-friendly data processing platform in the cloud with Terraform and Terragrunt. In this article, I focus only on AWS. I may cover the same setup on GCP in another article.
 
-In my past articles about Spark on kubernetes, it takes a resiliant, scalable infrastructure as granted, it is indeed usualy managed by the company's plateform team. if your organisation does not use Kubernetes company wide, and request such feature would probably take few months. Son't worry, just do it yourself! A Data processing plateform has no intention to manage any incoming traffic, service mesh or dns/ssl certificates configurations, thus it is easy to setup.
+In my previous articles about Spark on Kubernetes, I took a resilient and scalable infrastructure for granted. In many companies, that part is usually managed by a platform team. But if your organization does not use Kubernetes company-wide, getting such an environment provisioned for your team can easily take months.
 
-## Setup Kubernetes cluster on AWS
-If you are not familiar with [Terraform](https://blog.gruntwork.io/an-introduction-to-terraform-f17df9c6d180) or [Terragrunt](https://blog.gruntwork.io/terragrunt-how-to-keep-your-terraform-code-dry-and-maintainable-f61ae06959d8), have a glance on their blogs, it's a powerfull code as infrastructure tool. 
+The good news is that a data processing platform is actually much simpler to set up than a general-purpose application platform. It usually does not need to handle incoming public traffic, service mesh concerns, or DNS/SSL certificate management. That makes it a very good candidate for a self-service infrastructure setup.
 
-TL;TR, I just want code! check out the entire code base at my [git repository](https://github.com/mrmuggymuggy/terragrunt-dataplaform-bootstrap), it contains a deployment guide.
+## Setting up a Kubernetes cluster on AWS
 
-```
+If you are not familiar with [Terraform](https://blog.gruntwork.io/an-introduction-to-terraform-f17df9c6d180) or [Terragrunt](https://blog.gruntwork.io/terragrunt-how-to-keep-your-terraform-code-dry-and-maintainable-f61ae06959d8), have a quick look at their articles first. They are very powerful infrastructure-as-code tools.
+
+TL;DR: if you just want the code, check out the full implementation in my [Git repository](https://github.com/dataops-sre/terragrunt-dataplaform-bootstrap). It also contains a deployment guide.
+
+```hcl
 {% raw  %}
 module "eks" {
   source          = "terraform-aws-modules/eks/aws"
@@ -77,11 +84,20 @@ module "eks" {
 {% endraw  %}
 ```
 
-It uses existing [Terraform EKS module](https://github.com/terraform-aws-modules/terraform-aws-eks/), it defines two worker node pools, one with on demande instance to host vital components, one with spot instances to schedule compute units. you can later in your kubernetes deployments to specify which work node pool to target by setting kubernetes [taint and toleration](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/)
+This setup uses the existing [Terraform EKS module](https://github.com/terraform-aws-modules/terraform-aws-eks/). It defines two worker node pools:
 
-## Deploy the cluster autoscaler and the spot instance handler
-Use terraform Helm provider to deploy the cluster autoscaler and the spot instance termination handler.
-```
+- one pool with on-demand instances to host critical components
+- one pool with spot instances to run compute workloads more cheaply
+
+Later, in your Kubernetes deployments, you can decide which node pool to target by using Kubernetes [taints and tolerations](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/).
+
+This split works very well in practice: keep the essential services on stable nodes, and push bursty or fault-tolerant compute workloads onto spot capacity.
+
+## Deploying the cluster autoscaler and the spot instance handler
+
+Once the cluster is in place, the next step is to deploy the cluster autoscaler and the spot instance termination handler. I use the Terraform Helm provider for that.
+
+```hcl
 {% raw  %}
 resource "helm_release" "cluster-autoscaler" {
   name       = "cluster-autoscaler"
@@ -100,19 +116,32 @@ resource "helm_release" "spot-handler" {
 }
 {% endraw  %}
 ```
-now you have a managed, fully scalable, resiliant Kubernetes cluster on AWS!
 
-### Deploy Airflow
-We now deploy an Airflow instance in our cluster to perform Spark streaming jobs or Spark batch ETL as we discussed in my other articles.
-```
+At this point, you already have a managed, scalable, and resilient Kubernetes cluster on AWS.
+
+The cluster autoscaler adjusts node capacity automatically based on workload demand, while the spot termination handler helps the cluster react more gracefully to spot interruption events. Together, they make spot-based compute much more practical for data workloads.
+
+## Deploying Airflow
+
+The next step is to deploy Airflow into the cluster so it can orchestrate Spark streaming jobs and Spark batch ETL pipelines, as discussed in my previous articles.
+
+```hcl
 {% raw  %}
 resource "helm_release" "aiflow" {
   name       = "airflow"
-  repository = "https://mrmuggymuggy.github.io/helm-charts/"
+  repository = "https://dataops-sre.github.io/helm-charts/"
   chart      = "airflow"
   namespace  = "default"
 }
 {% endraw  %}
 ```
-I packed my Airflow helm chart into my own [helm repo](https://mrmuggymuggy.github.io/helm-charts/).
-Here were are,  a resiliant, scalable and budget data processing plateform infrastucture in AWS!
+
+I packaged my Airflow Helm chart in my own [Helm repository](https://dataops-sre.github.io/helm-charts/).
+
+## Conclusion
+
+And that is basically it: a resilient, scalable, and budget-friendly data platform infrastructure running on AWS.
+
+What I like about this setup is that it gives a small data team a lot of autonomy. You do not need a huge platform organization to get started. With a relatively small amount of Terraform and Helm configuration, you can build a solid Kubernetes foundation for Spark, Airflow, and other data workloads.
+
+Of course, this is only the bootstrap phase. In a real platform, you will probably also want to add observability, IAM fine-tuning, backups, cost monitoring, and security hardening. But as a starting point, this setup already gives you a strong and very usable base.

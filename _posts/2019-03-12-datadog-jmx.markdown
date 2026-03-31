@@ -1,10 +1,17 @@
 ---
 title: "How to collect JMX metrics from Kubernetes deployments with Datadog"
 date: 2019-03-12 16:36:37 +0100
-categories: Datadog Monitoring Jmx Kubernetes
+categories: Observability Kubernetes
 tags:
-  - Devops
+  - SRE
+  - DevOps
+  - Observability
+  - Monitoring
   - Datadog
+  - Kubernetes
+  - Data Processing
+  - Kafka
+  - JMX
 ---
 
 Since 2018, my team has been using Datadog to collect application-related metrics.

@@ -1,9 +1,13 @@
 ---
-title: "Why I moved away from Medium to Github page"
+title: "Why I moved away from Medium to GitHub Pages"
 date: 2020-06-20 16:36:37 +0100
-categories: General
+categories: Blogging Jekyll GitHub-Pages
 tags:
-  - General
+  - Blogging
+  - Markdown
+  - Jekyll
+  - GitHub Pages
+  - GitHub
 ---
 
 It has been more than a year since I last updated my [Medium space](https://medium.com/@mrmug). Unfortunately, Medium does not seem to be the right tool for me anymore. As a technical person, I find it too limited for the way I write, especially when it comes to things like code formatting and syntax highlighting.

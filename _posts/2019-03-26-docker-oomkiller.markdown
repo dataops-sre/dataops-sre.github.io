@@ -1,10 +1,16 @@
 ---
 title: "Understanding the Docker OOM killer from inside a container"
 date: 2019-03-26 16:36:37 +0100
-categories: Docker Kubernetes Kernel
+categories: Containers Linux Kubernetes SRE
 tags:
-  - Devops
+  - SRE
   - Docker
+  - Containers
+  - Linux
+  - cgroups
+  - Memory
+  - OOM Killer
+  - Troubleshooting
 ---
 
 Recently I wrote an [article](https://dataops-sre.github.io/datadog/monitoring/jmx/kubernetes/datadog-jmx/) about Datadog on Kubernetes. In that case, the Datadog `jmxfetch` Java process was killed by the host OOM killer because of JVM heap overallocation. I was quite surprised by that discovery. I already knew that containers and the host share the same kernel space, but I had assumed Docker would simply fail the container instead of actively intervening by killing the process.

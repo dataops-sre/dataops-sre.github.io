@@ -1,14 +1,18 @@
 ---
 title: "Running Spark Structured Streaming on Kubernetes"
 date: 2020-06-21 16:36:37 +0100
-categories: Spark Kubernetes
+categories: Data-Engineering Kubernetes
 tags:
-  - Spark
+  - DevOps
+  - Data Engineering
+  - Data Processing
+  - Apache Spark
+  - Structured Streaming
   - Kubernetes
-  - Devops
+  - Kafka
+  - AWS
+  - S3
 ---
-
-## Introduction
 
 There are many ways to process real-time data. At the company I work for, we use Kafka as our messaging service. Naturally, we first leaned toward Kafka streaming frameworks such as Kafka Connect and Kafka Streams. After about a year of experience, we realized the limitations were quite significant. They only handle Kafka as an input source, and we also had a hard time reprocessing historical data efficiently.
 

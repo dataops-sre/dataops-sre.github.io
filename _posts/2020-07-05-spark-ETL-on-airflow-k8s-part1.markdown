@@ -1,19 +1,17 @@
 ---
 title: "Spark ETL with Airflow on Kubernetes — Part 1"
 date: 2020-07-05 16:36:37 +0100
-categories: Spark Kubernetes Airflow
+categories: Data-Engineering Kubernetes Airflow
 tags:
-  - DevOps
   - Data Engineering
+  - Data Processing
+  - SRE
   - Airflow
   - Apache Spark
   - Kubernetes
   - AWS
   - ETL
-  - KubernetesPodOperator
 ---
-
-## Introduction
 
 [Apache Airflow](https://airflow.apache.org/docs/stable/) has become one of the most widely used ETL schedulers today. What I really like about it is that you write ETL pipelines in plain Python code. As my colleague Laurent once said: *Airflow is great for simple tasks — do not try to implement complex logic in it.*
 

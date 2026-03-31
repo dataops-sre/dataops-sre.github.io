@@ -1,19 +1,17 @@
 ---
 title: "Spark ETL with Airflow on Kubernetes — Part 2"
 date: 2020-07-05 22:36:37 +0100
-categories: Spark Kubernetes Airflow
+categories: Data-Engineering Kubernetes Airflow
 tags:
-  - DevOps
+  - SRE
   - Data Engineering
+  - Data Processing
   - Airflow
   - Apache Spark
   - Kubernetes
   - AWS
   - ETL
-  - KubernetesPodOperator
 ---
-
-## Introduction
 
 Let’s talk about the pitfalls and inconveniences of Airflow.
 
